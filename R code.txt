@@ -1,0 +1,482 @@
+setwd("d:data_WheatField")
+library(vegan)
+library(picante)
+ibrary(car)
+library(lme4)
+library(ggplot2)
+library(reshape2)
+library(scales)
+library(plyr)
+library(RColorBrewer)
+library(tidyr)
+library(phyloseq)
+library(ape)
+library(dplyr)
+library(phangorn)
+library(plotly)
+library(tidyr)
+library(RAM)
+library(permute)
+library(lattice)
+library(pheatmap)
+
+##Calculation of the alpha diversity
+alpha_diversity <- function(x, tree = NULL) {
+  OTU_richness <- estimateR(x)[1, ]
+  Chao1 <- estimateR(x)[2, ]
+  ACE <- estimateR(x)[4, ]
+  Shannon <- diversity(x, index="shannon")
+  Inverse_simpson<-diversity(x,index="inv")
+  Gini_simpson <- diversity(x,index="simpson")
+  Goods_coverage <- 1 - rowSums(x == 1) / rowSums(x)
+  Pielou_evenness<-Shannon/log(OTU_richness)
+  Simpson_evenness<-Gini_simpson/log(OTU_richness)
+  result <- data.frame(Shannon, Inverse_simpson, Gini_simpson,Pielou_evenness, Simpson_evenness,OTU_richness,Chao1,ACE,Goods_coverage)
+  
+   if (!is.null(tree)) {
+    tree <- pd(x, tree, include.root = FALSE)[1]
+    names(tree) <- "PD"
+    result <- cbind(result, PD)
+    result <- data.frame(Shannon, Inverse_simpson, Gini_simpson,Pielou_evenness, Simpson_evenness,OTU_richness,Chao1,ACE,Goods_coverage,PD)
+  }
+  result
+｝
+
+##16s bacterial diversity
+otu<-read.table("16s_otu.txt", header=T, sep="\t",row.names=1,stringsAsFactors = FALSE)
+tree<-read.tree("16s_FastTree.nwk")
+otu1<-t(otu)
+alpha1 <- alpha_diversity (otu1, tree)
+write.table(alpha1,"16s_alpha_diversity.txt",row.names=T,sep="\t")
+
+##ITS fungal diversity
+otu<-read.table("ITS_otu.txt", header=T, sep="\t",row.names=1,stringsAsFactors = FALSE)
+tree<-read.tree("ITS_FastTree.nwk")
+otu1<-t(otu)
+alpha1 <- alpha_diversity (otu1, tree)
+write.table(alpha1,"ITS_alpha_diversity.txt",row.names=T,sep="\t")
+
+##Making alpha diversity figure
+##16s
+diversity<-read.table("16s_alpha_diversity.txt",sep="\t",header=T, row.names=1)
+windows(width=5, height=4)
+diversity$treatment<-as.factor(diversity$treatment)
+levels(diversity$treatment)
+diversity$date<-factor(diversity$date,levels=c("May.10","May.24","Jun.7","Jun.21","Jul.5","Jul.19","Aug.1"))
+levels(diversity$date)
+p<-ggplot(diversity, aes(x=treatment, y=Shannon))+
+geom_boxplot(outlier.colour = NA, width=0.6,outlier.shape = NA,lwd=0.5,fatten=0.6)+
+xlab("")+
+ylab("Shannon Index")+
+facet_grid(cultivar~date)+
+theme(strip.text.x = element_text(size = 8))+
+theme(strip.text.y = element_text(size = 10))+
+theme(axis.title=element_text(size=16))+
+theme(axis.text.x=element_text(size = 6))+
+theme(axis.text.y = element_text(size = 10))+
+geom_jitter(aes(colour=treatment),width = 0.5,size=0.8)+
+scale_colour_discrete("Treatment (%)")+
+theme(legend.position="bottom")
+p
+
+##ITS
+diversity<-read.table("ITS_alpha_diversity.txt",sep="\t",header=T, row.names=1)
+windows(width=5, height=4)
+diversity$treatment<-as.factor(diversity$treatment)
+levels(diversity$treatment)
+diversity$date<-factor(diversity$date,levels=c("May.10","May.24","Jun.7","Jun.21","Jul.5","Jul.19","Aug.1"))
+levels(diversity$date)
+p<-ggplot(diversity, aes(x=treatment, y=Shannon))+
+geom_boxplot(outlier.colour = NA, width=0.6,outlier.shape = NA,lwd=0.5,fatten=0.6)+
+xlab("")+
+ylab("Shannon Index")+
+facet_grid(cultivar~date)+
+theme(strip.text.x = element_text(size = 8))+
+theme(strip.text.y = element_text(size = 10))+
+theme(axis.title=element_text(size=16))+
+theme(axis.text.x=element_text(size = 6))+
+theme(axis.text.y = element_text(size = 10))+
+geom_jitter(aes(colour=treatment),width = 0.5,size=0.8)+
+scale_colour_discrete("Treatment (%)")+
+theme(legend.position="bottom")
+p
+
+
+##Statitstics for 16s alpha diversity
+diversity<-read.table("16s_alpha_diversity.txt", sep="\t",header=T, row.names=1)
+summary(aov(Shannon ~ treatment*date*cultivar + Error(block/(date+cultivar)), data = diversity))
+summary(aov(Inverse_Simpson ~ treatment*date*cultivar + Error(block/(date+cultivar)), data = diversity))
+summary(aov(PD ~ treatment*date*cultivar + Error(block/(date+cultivar)), data = diversity))
+
+##Statitstics for ITS alpha diversity
+diversity<-read.table("ITS_alpha_diversity.txt", sep="\t",header=T, row.names=1)
+summary(aov(Shannon ~ treatment*date*cultivar + Error(block/(date+cultivar)), data = diversity))
+summary(aov(Inverse_Simpson ~ treatment*date*cultivar + Error(block/(date+cultivar)), data = diversity))
+summary(aov(PD ~ treatment*date*cultivar + Error(block/(date+cultivar)), data = diversity))
+
+
+## Mean bi-weekly variation of precipitation and temperature
+env<-read.table("climatic.txt",sep="\t",header=T,row.names=1)
+windows(width=5, height=3)
+levels(env$date)
+env$date<-factor(env$date,levels=c("May.10","May.24","Jun.7","Jun.21","Jul.5","Jul.19","Aug.1"))
+ggplot(env,aes(x=date, y=avgtep))+
+geom_point(size=3)+
+geom_line(group="date")+
+geom_pointrange(aes(ymin=avgtep-se1,ymax=avgtep+se1))+
+ylab("Weekly mean temperature (°C)")+
+xlab("")+
+theme(axis.title=element_text(size=11,face="bold"))+
+theme(axis.text.x = element_text(size = 10,face="bold"))+
+theme(axis.text.y = element_text(size = 12))
+
+env<-read.table("climatic.txt",sep="\t",header=T,row.names=1)
+windows(width=5, height=3)
+levels(env$date)
+env$date<-factor(env$date,levels=c("May.10","May.24","Jun.7","Jun.21","Jul.5","Jul.19","Aug.1"))
+ggplot(env,aes(x=date, y=prep))+
+geom_point(size=3)+
+geom_line(group="date")+
+geom_pointrange(aes(ymin=prep-se1,ymax=prep+se1))+
+ylab("Weekly mean precipitation (mm)")+
+xlab("")+
+theme(axis.title=element_text(size=11,face="bold"))+
+theme(axis.text.x = element_text(size = 10,face="bold"))+
+theme(axis.text.y = element_text(size = 12))
+
+##bacterial beta diversity
+spe<-read.table("16s_OTU.txt",row.names=1,header=T,sep="\t")
+spe1<-t(spe)
+bray<-vegdist(spe1,na.rm=T)
+pcoa<- cmdscale(bray, k=(nrow(spe1)-1), eig=TRUE)
+write.table(pcoa$points,"16s_pcoa1.txt",row.names=T,sep="\t")
+pcoa_point<-read.table("16s_pcoa1.txt",row.names=1,header=T,sep="\t")
+Coordinates <- data.frame(
+PCoA1 = pcoa$points[,1],
+PCoA2 = pcoa$points[,2],
+row.names = NULL
+ )
+Eigenvalues <- eigenvals(pcoa)
+Variance <- Eigenvalues / sum(Eigenvalues) 
+Variance1 <- 100 * signif(Variance[1], 2)
+Variance2 <- 100 * signif(Variance[2], 2)
+Result <- list(
+Coordinates = Coordinates,
+     Variance1 = Variance1,
+     Variance2 = Variance2
+)
+Result
+
+##Making 16s beta diversity figure
+pcoa_point<-read.table("16s_pcoa1.txt",row.names=1,header=T,sep="\t")
+pcoa_point$treatment<-as.factor(pcoa_point$treatment)
+levels(pcoa_point$treatment)
+pcoa_point$date<-factor(pcoa_point$date,levels=c("May.10","May.24","Jun.7","Jun.21","Jul.5","Jul.19","Aug.1"))
+levels(pcoa_point$date)
+windows(width=6, height=4)
+p<-qplot(pcoa1, pcoa2, data = pcoa_point, shape = factor(treatment),color=factor(date),xlab="Axis 1 (19.0%)", ylab="Axis 2 (4.8%)")+
+geom_point(size=1.5)+
+theme(axis.title=element_text(size=16))+
+theme(axis.text.x = element_text(size = 12))+
+theme(axis.text.y = element_text(size = 12))+
+guides(shape=guide_legend(title="Treatment (%)"))+
+scale_colour_discrete("Sampling dates")+
+theme(legend.text = element_text(size = 8))+
+theme(legend.title=element_text(size=10))
+p
+
+
+##ITS beta diversity
+spe<-read.table("ITS_OTU.txt",row.names=1,header=T,sep="\t")
+spe1<-t(spe)
+bray<-vegdist(spe1,na.rm=T)
+pcoa<- cmdscale(bray, k=(nrow(spe1)-1),eig=TRUE)
+write.table(pcoa$points,"ITS_pcoa1.txt",row.names=T,sep="\t")
+pcoa_point<-read.table("ITS_pcoa1.txt",row.names=1,header=T,sep="\t")
+Coordinates <- data.frame(
+PCoA1 = pcoa$points[,1],
+PCoA2 = pcoa$points[,2],
+row.names = NULL
+ )
+Eigenvalues <- eigenvals(pcoa)
+Variance <- Eigenvalues / sum(Eigenvalues) 
+Variance1 <- 100 * signif(Variance[1], 2)
+Variance2 <- 100 * signif(Variance[2], 2)
+Result <- list(
+Coordinates = Coordinates,
+     Variance1 = Variance1,
+     Variance2 = Variance2
+)
+Result
+
+##Making ITS beta diversity figure
+pcoa_point<-read.table("ITS_pcoa1.txt",row.names=1,header=T,sep="\t")
+pcoa_point$treatment<-as.factor(pcoa_point$treatment)
+levels(pcoa_point$treatment)
+pcoa_point$date<-factor(pcoa_point$date,levels=c("May.10","May.24","Jun.7","Jun.21","Jul.5","Jul.19","Aug.1"))
+levels(pcoa_point$date)
+windows(width=6, height=4)
+p<-qplot(pcoa1, pcoa2, data = pcoa_point, shape = factor(treatment),color=factor(date),xlab="Axis 1 (12.5%)", ylab="Axis 2 (9.5%)")+
+geom_point(size=1.5)+
+theme(axis.title=element_text(size=16))+
+theme(axis.text.x = element_text(size = 12))+
+theme(axis.text.y = element_text(size = 12))+
+guides(shape=guide_legend(title="Treatment (%)"))+
+scale_colour_discrete("Sampling dates")+
+theme(legend.text = element_text(size = 8))+
+theme(legend.title=element_text(size=10))
+p
+
+
+##Statistics test for beta diversity
+
+##16s
+otu<-read.table("16s_otu.txt",row.names=1,header=T,sep="\t")
+otu1<-t(otu)
+otu1[is.na(otu1)]=0 #to set NA to 0
+list<-read.table("group1.txt",row.names=1,header=T,sep="\t")
+ano<-anosim(otu1,list$treatment,distance="bray",permutations=9999)
+ano<-anosim(otu1,list$date,distance="bray",permutations=9999)
+ano<-anosim(otu1,list$cultivar,distance="bray",permutations=9999)
+summary(ano)
+
+##ITS
+otu<-read.table("ITS_otu.txt",row.names=1,header=T,sep="\t")
+otu1<-t(otu)
+otu1[is.na(otu1)]=0 #to set NA to 0
+list<-read.table("group1.txt",row.names=1,header=T,sep="\t")
+ano<-anosim(otu1,list$treatment,distance="bray",permutations=9999)
+ano<-anosim(otu1,list$date,distance="bray",permutations=9999)
+ano<-anosim(otu1,list$cultivar,distance="bray",permutations=9999)
+summary(ano)
+
+##Dominant phyla of the relative abundance for 16s
+otu=read.table("16s_OTU_taxa.txt",header=T,row.names=1,sep="\t")
+abu.p<-tax.abund(otu,mode="percent",count=F,rank="p",top=1)
+write.table(abu.p,"16s_phyla_abundance.txt",row.names=T,sep="\t")
+
+abudPhyla<-read.table("16s_phyla_abundance.txt",row.names=1,header=T,sep="\t")
+levels(abudPhyla$treatment)
+abudPhyla$treatment<-as.factor(abudPhyla$treatment)
+abudPhyla$date<-factor(abudPhyla$date,levels=c("May.10","May.24","Jun.7","Jun.21","Jul.5","Jul.19","Aug.1"))
+levels(abudPhyla$date)
+abudPhyla$phyla<-factor(abudPhyla$phyla,levels=c("Unclassified","Others","Firmicutes","Planctomycetes","Bacteroidetes","Verrucomicrobia","Acidobacteria","Proteobacteria","Actinobacteria","Thaumarchaeota"))
+levels(abudPhyla$phyla)
+windows(width=8, height=4)
+ggplot(abudPhyla, aes(x = treatment, y = abundance, fill = phyla))+
+geom_bar(stat = "identity", position = "fill")+ 
+scale_y_continuous(labels = percent)+
+facet_grid(~date)+
+scale_fill_brewer(palette = "Set3")+
+theme(axis.title=element_text(size=16))+
+theme(axis.text.x = element_text(size = 10))+
+theme(axis.text.y = element_text(size = 10))+
+guides(fill=guide_legend(title="Phyla"))+
+ylab("Relative abundance")+
+xlab("Treatment (%)")
+
+
+##Dominant phyla of the relative abundance for ITS
+otu=read.table("ITS_OTU_taxa.txt",header=T,row.names=1,sep="\t")
+abu.p<-tax.abund(otu,mode="percent",count=F,rank="p",top=1)
+write.table(abu.p,"ITS_phyla_abundance.txt",row.names=T,sep="\t")
+
+abudPhyla<-read.table("ITS_phyla_abundance.txt",row.names=1,header=T,sep="\t")
+levels(abudPhyla$treatment)
+abudPhyla$treatment<-as.factor(abudPhyla$treatment)
+abudPhyla$date<-factor(abudPhyla$date,levels=c("May.10","May.24","Jun.7","Jun.21","Jul.5","Jul.19","Aug.1"))
+levels(abudPhyla$date)
+abudPhyla$phyla<-factor(abudPhyla$phyla,levels=c("Unclassified","Others","Basidiomycota","Ascomycota","Mortierellomycota"))
+levels(abudPhyla$phyla)
+windows(width=8, height=4)
+ggplot(abudPhyla, aes(x = treatment, y = abundance, fill = phyla))+
+geom_bar(stat = "identity", position = "fill")+ 
+scale_y_continuous(labels = percent)+
+facet_grid(~date)+
+scale_fill_brewer(palette = "Set1")+
+theme(axis.title=element_text(size=16))+
+theme(axis.text.x = element_text(size = 10))+
+theme(axis.text.y = element_text(size = 10))+
+guides(fill=guide_legend(title="Phyla"))+
+ylab("Relative abundance")+
+xlab("Treatment (%)")
+
+##Statistics test for 16s and ITS dominant phyla 
+phyla_abu<-read.table("16s_phyla_abundance_anova.txt", sep="\t",header=T, row.names=1)
+summary(aov(Thaumarchaeota ~ treatment*date*cultivar + Error(block/(date+cultivar)), data = phyla_abu))
+summary(aov(Actinobacteria ~ treatment*date*cultivar + Error(block/(date+cultivar)), data = phyla_abu))
+summary(aov(Proteobacteria ~ treatment*date*cultivar + Error(block/(date+cultivar)), data = phyla_abu))
+summary(aov(Acidobacteria ~ treatment*date*cultivar + Error(block/(date+cultivar)), data = phyla_abu))
+summary(aov(Verrucomicrobia ~ treatment*date*cultivar + Error(block/(date+cultivar)), data = phyla_abu))
+summary(aov(Bacteroidetes ~ treatment*date*cultivar + Error(block/(date+cultivar)), data = phyla_abu))
+summary(aov(Planctomycetes ~ treatment*date*cultivar + Error(block/(date+cultivar)), data = phyla_abu))
+summary(aov(Firmicutes ~ treatment*date*cultivar + Error(block/(date+cultivar)), data = phyla_abu))
+
+phyla_abu<-read.table("ITS_phyla_abundance_anova.txt", sep="\t",header=T, row.names=1)
+summary(aov(Mortierellomycota ~ treatment*date*cultivar + Error(block/(date+cultivar)), data = phyla_abu))
+summary(aov(Ascomycota ~ treatment*date*cultivar + Error(block/(date+cultivar)), data = phyla_abu))
+summary(aov(Basidiomycota ~ treatment*date*cultivar + Error(block/(date+cultivar)), data = phyla_abu))
+
+
+##Heatmap of 16s dominant genera 
+otu=read.table("16s_OTU_taxa.txt",header=T,row.names=1,sep="\t")
+abu.g1<-tax.abund(otu,mode="percent",count=F,rank="g",top=1,drop.unclassified=TRUE)
+abu.g2<-t(abu.g1)
+pheatmap(head(abu.g2,n=30),scale="column"or"row"or"none")
+group=read.table("group.txt",header=T,row.names=1,sep="\t")
+annotation_col <- data.frame(group=factor(group$date,levels=c("May.10","May.24","Jun.7","Jun.21","Jul.5","Jul.19","Aug.1")))
+pheatmap(head(abu.g2,n=30),scale="row",annotation_col=group,show_colnames=F,cluster_row = F)
+
+sampFile = as.data.frame(group$date,row.names = row.names(group))
+colnames(sampFile)[1] = "date"
+mer = merge(sampFile, abu.g1, by="row.names")
+mer1 = mer[,-1]
+mer_mean = aggregate(mer1[,2:46], by=mer1[1], FUN=mean)
+mer_mean1<-read.table("mer_mean_16s.txt",header=T,row.names=1,sep="\t")
+mer_mean2<-t(mer_mean1)
+pheatmap(head(mer_mean2,n=30),scale="row",show_colnames=T,cluster_row = T,cluster_col=F)
+group=read.table("group.txt",header=T,row.names=1,sep="\t")
+annotation_col <- data.frame(group=factor(group$cultivar))
+pheatmap(head(mer_mean2,n=30),scale="row",show_colnames=T,cluster_row = T,cluster_col=F,clustering_distance_rows = "euclidean",cellwidth = 18, cellheight = 12, fontsize = 10, fontface="italic",angle_col="45",gaps_row=c(24))
+
+##Heatmap of ITS dominant families
+otu=read.table("ITS_OTU_taxa.txt",header=T,row.names=1,sep="\t")
+abu.g1<-tax.abund(otu,mode="percent",count=F,rank="f",top=1,drop.unclassified=TRUE)
+sampFile = as.data.frame(group$date,row.names = row.names(group))
+colnames(sampFile)[1] = "date"
+mer = merge(sampFile, abu.g1, by="row.names")
+mer1 = mer[,-1]
+mer_mean = aggregate(mer1[,2:23], by=mer1[1], FUN=mean)
+mer_mean1<-read.table("mer_mean_ITS.txt",header=T,row.names=1,sep="\t")
+mer_mean2<-t(mer_mean1)
+pheatmap(head(mer_mean2,n=20),scale="row",show_colnames=T,cluster_row = T,cluster_col=F,clustering_distance_rows = "euclidean",cellwidth = 18, cellheight = 12, fontsize = 10, fontface="italic",angle_col="45")
+
+
+##Variation of daily precipitation across growing season from 2008 to 2017
+climate<-read.table("precipitation_decades.txt",sep="\t",header=T, row.names=1,stringsAsFactors=T)
+levels(climate$Month)
+climate$Month<-factor(climate$Month,levels=c("May", "June", "July", "August"))
+levels(climate$Month)
+p<-ggplot(climate, aes(x=date, y=P_2017,fill=Month))+
+geom_bar(stat="identity",position=position_dodge(),width=1,col="black")+
+xlab("")+
+ylab("")+
+theme_bw()+
+theme(axis.title=element_text(size=16))+
+scale_x_continuous(breaks=seq(1, 123, 1), limits=c(0, 124))+
+scale_y_continuous(breaks=seq(0, 60, 10), limits=c(0, 60))+
+theme(panel.grid.minor.x = element_blank())+
+theme(axis.text.x = element_blank())+
+geom_vline(xintercept = 1,colour="grey", linetype = "longdash")+
+geom_vline(xintercept = 31,colour="grey", linetype = "longdash")+
+geom_vline(xintercept = 61,colour="grey", linetype = "longdash")+
+geom_vline(xintercept = 92,colour="grey", linetype = "longdash")+
+geom_vline(xintercept = 123,colour="grey", linetype = "longdash")+
+theme(panel.border = element_rect(colour = "black"))
+p
+
+##Variations in daily precipitation across the whole growing season in 2018
+
+climate<-read.table("climatic2.txt",sep="\t",header=T, row.names=1,stringsAsFactors=T)
+levels(climate$Month)
+climate$Month<-factor(climate$Month,levels=c("May", "June", "July", "August"))
+levels(climate$Month)
+p<-ggplot(climate, aes(x=date, y=precipitation,fill=Month))+
+geom_bar(stat="identity",position=position_dodge(),width=1,col="darkblue")+
+xlab("Date")+
+ylab("Precipitation (mm)")+
+theme_bw()+
+theme(axis.title=element_text(size=16))+
+scale_x_continuous(breaks=seq(1, 123, 1), limits=c(0, 124))+
+scale_y_continuous(breaks=seq(0, 40, 5), limits=c(0, 40))+
+theme(panel.grid.minor.x = element_blank())+
+theme(axis.text.x = element_blank())+
+geom_vline(xintercept = 1,colour="grey", linetype = "longdash")+
+geom_vline(xintercept = 31,colour="grey", linetype = "longdash")+
+geom_vline(xintercept = 61,colour="grey", linetype = "longdash")+
+geom_vline(xintercept = 92,colour="grey", linetype = "longdash")+
+geom_vline(xintercept = 123,colour="grey", linetype = "longdash")+
+geom_text(aes(x = 10, y = 32, label = "May 1 to May 31"),size=5)+
+geom_text(aes(x = 40, y = 32, label = "Jun. 1 to Jun. 30"),size=5)+
+geom_text(aes(x = 69, y = 32, label = "Jul. 1 to Jul. 31"),size=5)+
+geom_text(aes(x = 102, y = 32, label = "Aug. 1 to Aug. 31"),size=5)+
+annotate("segment",x=10,xend=10,y=0, yend=0, col="red",arrow=arrow(type="closed",length=unit(0.2,"cm")))+
+annotate("segment",x=24,xend=24,y=15, yend=0, col="red",arrow=arrow(type="closed",length=unit(0.2,"cm")))+
+annotate("segment",x=38,xend=38,y=15, yend=0, col="red",arrow=arrow(type="closed",length=unit(0.2,"cm")))+
+annotate("segment",x=52,xend=52,y=15, yend=0, col="red",arrow=arrow(type="closed",length=unit(0.2,"cm")))+
+annotate("segment",x=66,xend=66,y=15, yend=0, col="red",arrow=arrow(type="closed",length=unit(0.2,"cm")))+
+annotate("segment",x=80,xend=80,y=15, yend=0, col="red",arrow=arrow(type="closed",length=unit(0.2,"cm")))+
+annotate("segment",x=93,xend=93,y=15, yend=0, col="red",arrow=arrow(type="closed",length=unit(0.2,"cm")))+
+theme(panel.border = element_rect(colour = "black"))
+p
+
+##variation of Soil water content across growing season 
+moisture<-read.table("soil water anova.txt",row.names=1,sep="\t",header=T)
+levels(moisture$treatment)
+moisture$treatment<-factor(moisture$treatment,levels=c("0", "25", "50", "75"))
+levels(moisture$treatment)
+moisture$date<-factor(moisture$date,levels=c("May.10","May.24","Jun.7","Jun.21","Jul.5","Jul.19","Aug.1"))
+levels(moisture$date)
+p<-ggplot(moisture, aes(x=date, y=moisture))+
+geom_point(aes(col=treatment),size=3)+
+geom_smooth(aes(group=treatment,col=treatment), method="loess",alpha=0.1,size=1,span=0.75)+
+xlab("Sampling date")+
+ylab("Soil water content (%)")+
+theme_bw()+
+theme(axis.title=element_text(size=16))+
+theme(strip.text.x = element_text(size = 12))+
+guides(col=guide_legend(title="Treatment"))+
+theme(panel.border = element_rect(colour = "black"))
+p
+
+
+##variation in yields and grain protein of thwo wheat clutivrs across treatment 
+##protein
+prot<-read.table("protein.txt",sep="\t",header=T, row.names=1)
+levels(prot$treatment)
+prot$treatment<-factor(prot$treatment,levels=c("0", "25", "50", "75"))
+levels(prot$treatment)
+windows(width=4, height=4)
+p<-ggplot(prot, aes(x=treatment, y=protein,fill=treatment))+
+geom_boxplot(width=0.8,outlier.shape = NA,lwd=0.8)+
+xlab("Treatment (%)")+
+ylab("Grain protein (%)")+
+theme_bw()+
+theme(strip.text.x = element_text(size = 12))+
+theme(axis.title=element_text(size=16))+
+theme(axis.text.x=element_text(size = 12))+
+theme(axis.text.y = element_text(size = 12))+
+theme(panel.grid.minor = element_blank())+
+scale_fill_brewer(palette = "Set1")+
+guides(col=guide_legend(title="Treatment"))+
+facet_wrap(~cultivar,scales = "free_x")+
+geom_point(size=2)+
+theme(panel.border = element_rect(colour = "black",fill=NA))+
+theme(legend.position="bottom")
+p
+
+##wheat yields
+y<-read.table("yields.txt",sep="\t",header=T, row.names=1)
+levels(y$treatment)
+y$treatment<-factor(y$treatment,levels=c("0", "25", "50", "75"))
+levels(y$treatment)
+windows(width=4, height=4)
+p<-ggplot(y, aes(x=treatment, y=yields,fill=treatment))+
+geom_boxplot(width=0.8,outlier.shape = NA,lwd=0.8)+
+xlab("Treatment (%)")+
+ylab("Wheat yields (g)")+
+theme_bw()+
+theme(strip.text.x = element_text(size = 12))+
+theme(axis.title=element_text(size=16))+
+theme(axis.text.x=element_text(size = 12))+
+theme(axis.text.y = element_text(size = 12))+
+theme(panel.grid.minor = element_blank())+
+scale_fill_brewer(palette = "Set1")+
+guides(col=guide_legend(title="Treatment"))+
+facet_wrap(~cultivar,scales = "free_x")+
+geom_point(size=2)+
+theme(panel.border = element_rect(colour = "black",fill=NA))+
+theme(legend.position="bottom")
+p
+
+
